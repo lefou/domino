@@ -12,6 +12,7 @@ class SBuild(implicit _project: Project) {
   val jar = s"target/${namespace}-${version}.jar"
 
   val scalaVersion = "2.10.0"
+  val scalaBinVersion = "2.10"
   val scalacCp =
     s"mvn:org.scala-lang:scala-library:${scalaVersion}" ~
     s"mvn:org.scala-lang:scala-reflect:${scalaVersion}" ~
@@ -27,11 +28,18 @@ class SBuild(implicit _project: Project) {
     "mvn:org.helgoboss:scala-logging:1.0.0" ~
     "mvn:org.helgoboss:capsule:1.1.0"
 
+  val testCp = compileCp ~ jar ~
+    s"mvn:org.scalatest:scalatest_${scalaBinVersion}:1.9.1" ~
+    s"mvn:org.scala-lang:scala-actors:${scalaVersion}" ~
+    "mvn:junit:junit:4.11"
+
+  ExportDependencies("eclipse.classpath", compileCp)
+
   Target("phony:clean").evictCache exec {
     AntDelete(dir = Path("target"))
   }
 
-  Target("phony:all") dependsOn jar
+  Target("phony:all") dependsOn jar ~ "test"
 
   Target("phony:compile").cacheable dependsOn scalacCp ~ compileCp ~ "scan:src/main/scala" exec {
     addons.scala.Scalac(
@@ -39,6 +47,16 @@ class SBuild(implicit _project: Project) {
       classpath = compileCp.files,
       destDir = Path("target/classes"),
       sources = "scan:src/main/scala".files,
+      debugInfo = "vars"
+    )
+  }
+
+  Target("phony:testCompile").cacheable dependsOn scalacCp ~ testCp ~ "scan:src/test/scala" exec {
+    addons.scala.Scalac(
+      compilerClasspath = scalacCp.files,
+      classpath = testCp.files,
+      destDir = Path("target/test-classes"),
+      sources = "scan:src/test/scala".files,
       debugInfo = "vars"
     )
   }
@@ -64,6 +82,14 @@ class SBuild(implicit _project: Project) {
         "Import-Package" -> """scala.*;version="[2.10,2.11)",
                                *"""
       )
+    )
+  }
+
+  Target("phony:test") dependsOn testCp ~ "testCompile" exec {
+    addons.scalatest.ScalaTest(
+      classpath = testCp.files,
+      runPath = Seq("target/test-classes"),
+      reporter = "oF"
     )
   }
 
